@@ -24,3 +24,21 @@ claimed. No mobile/web product UI changed, so no Maestro device run was required
 for this shell/Python workflow change. Product tasks still enforce configured
 checks and their UI gate. At validation time this folder had no Git repository metadata;
 repository publication was a separate subsequent step.
+
+## Cost-focused update
+
+The complete offline suite now passes 31 tests. Added coverage establishes:
+
+- Routine non-UI medium-risk work completes with two CLI agent stages.
+- Failed regular prechecks stop before any reviewer is launched.
+- Missing required check configuration blocks CLI execution upfront.
+- Passing prechecks do not grant readiness or replace fresh final verification.
+- A second diagnosed repair uses the configured stronger implementation role.
+- Separate test authoring remains configurable, and existing saved tasks retain
+  their original stages and role configuration.
+- Cost metrics keep estimates separate from user-reported usage; duplicate
+  provider/reference pairs and nonfinite amounts are rejected.
+
+Both updated skills pass the Skill Creator validator. Python compilation and
+Git whitespace checks pass. These are workflow behavior tests with simulated
+provider CLIs; they do not establish real-world dollar savings or defect rates.

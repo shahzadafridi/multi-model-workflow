@@ -18,7 +18,8 @@ Arguments follow `$workflow` in the user's message:
 
 Create tasks with `mw start` using separately quoted flow, risk, UI flag and brief.
 Show the returned task ID, chosen risk and stages. Never interpolate raw user
-text into shell code. By default run `mw run TASK --once`, inspect status, and
+text into shell code. Configure meaningful regular and required UI checks
+before launching any paid stage. By default run `mw run TASK --once`, inspect status, and
 repeat while gates succeed. A stage agent must not recursively launch workflows.
 
 If this environment cannot launch a CLI, disclose that limitation. Manual handoff:
@@ -28,6 +29,8 @@ summary. Preserve independent high-risk review through an external reviewer or
 human handoff; do not silently substitute yourself.
 
 Set meaningful executable checks through `mw checks`, then use `mw check TASK`
-at verification. Failures stop: inspect artifacts before bounded `mw repair`.
+at precheck and final verification. Failures stop: inspect artifacts before bounded `mw repair`.
 Report completion only when status says ready for the current checkout.
+Use `mw metrics TASK` to inspect attempts, repairs, execution time and cost entries.
+Reported provider costs are user-supplied, not independently verified billing.
 Commit/push remain explicit user actions.

@@ -14,6 +14,6 @@ existing task to resume. Do not pick an unrelated task or create a replacement.
 Inspect `mw status TASK`. Continue `mw run TASK --once` while gates pass.
 For manual handoff use `mw next TASK --tool manual` and record the specified
 structured result; disclose substitutions and preserve independent high-risk
-review. Configure real executable checks before verification. Diagnose failures
+review. Configure real executable checks before any paid stage. Diagnose failures
 before bounded repair. Never reset budgets or skip gates to force completion.
 Do not commit/push unless requested after the runner reports ready.

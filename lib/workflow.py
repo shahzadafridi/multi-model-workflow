@@ -6,6 +6,7 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -65,6 +66,15 @@ def config():
         raise WorkflowError("Unsupported config version")
     if not isinstance(data.get("roles"), dict) or not isinstance(data.get("limits"), dict):
         raise WorkflowError("roles and limits must be JSON objects")
+    routing = data.get("routing", {})
+    if not isinstance(routing, dict):
+        raise WorkflowError("routing must be a JSON object")
+    risks = routing.get("separate_test_risks", ["high"])
+    if not isinstance(risks, list) or any(x not in ("low", "medium", "high") for x in risks):
+        raise WorkflowError("separate_test_risks must contain valid risk levels")
+    threshold = routing.get("escalate_after_repairs", 2)
+    if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        raise WorkflowError("escalate_after_repairs must be a positive integer")
     for role, value in data["roles"].items():
         if not isinstance(value, dict) or value.get("tool") not in TOOLS or not isinstance(value.get("model", ""), str):
             raise WorkflowError(f"Invalid tool/model for {role}")
@@ -169,7 +179,8 @@ def stage(task):
 
 
 def invalidate(task, reason):
-    restart = "implement" if "implement" in task["stages"] else "review"
+    restart = "implement" if "implement" in task["stages"] else (
+        "precheck" if "precheck" in task["stages"] else "review")
     if "plan" in task["stages"] and not any(
             entry.get("stage") == "plan" and entry.get("result", {}).get("verdict") == "PASS"
             for entry in task["history"]):
@@ -201,9 +212,9 @@ def create(args):
     ui = args.ui or flow in ("ship-from-spec", "ship-change", "review-update")
     plan = flow == "ship-from-spec" or args.risk == "high"
     stages = [] if flow == "review-update" else (["plan"] if plan else []) + ["implement"]
-    if flow != "review-update" and (args.risk != "low" or ui):
+    if flow != "review-update" and (args.risk in cfg["routing"]["separate_test_risks"] or ui):
         stages.append("test")
-    stages.extend(["review", "verify"])
+    stages.extend(["precheck", "review", "verify"])
     checks = [json.loads(x) for x in args.check] or cfg["checks"]
     ui_checks = [json.loads(x) for x in args.ui_check] or cfg["ui_checks"]
     validate_checks(checks)
@@ -228,7 +239,9 @@ def create(args):
 
 def role_for(task, current):
     key = current
-    if current == "implement" and (task["risk"] == "high" or task["pro"]):
+    threshold = task["config"].get("routing", {}).get("escalate_after_repairs")
+    escalate = threshold is not None and task["repairs"] >= threshold
+    if current == "implement" and (task["risk"] == "high" or task["pro"] or escalate):
         key = "implement_high"
     if current == "review" and task["risk"] == "high":
         key = "review_high"
@@ -283,7 +296,7 @@ Write the result file only after finishing. Do not advance subsequent stages.
 def prepare(task, tool=None):
     sync(task)
     current = stage(task)
-    if current in ("done", "verify"):
+    if current in ("done", "precheck", "verify"):
         return None
     if task.get("flight"):
         if tool and tool != task["flight"]["role"]["tool"]:
@@ -318,7 +331,7 @@ def next_prompt(task, tool=None):
     flight = prepare(task, tool)
     if flight:
         print(prompt_text(task, flight))
-    elif stage(task) == "verify":
+    elif stage(task) in ("precheck", "verify"):
         print(f"Run deterministic checks: mw check {task['id']}")
     else:
         print("All gates passed for the current checkout. Ready for human review/commit.")
@@ -429,10 +442,12 @@ def command_for(role, prompt, folder):
 
 def run(task, once=False, tool=None):
     sync(task)
+    if stage(task) != "done":
+        require_checks(task)
     while stage(task) != "done":
         if task.get("blocked"):
             raise WorkflowError("Previous stage failed; inspect it and use mw repair")
-        if stage(task) == "verify":
+        if stage(task) in ("precheck", "verify"):
             check(task)
         else:
             flight = prepare(task, tool)
@@ -460,19 +475,26 @@ def run(task, once=False, tool=None):
     print(f"Task {task['id']}: {stage(task)}. No commit was created.")
 
 
-def check(task):
-    sync(task)
-    if stage(task) != "verify":
-        raise WorkflowError(f"Checks cannot release this task before review; current stage: {stage(task)}")
+def require_checks(task):
+    """Do not spend on a model when the task cannot reach its release gate."""
     if not task["checks"]:
         raise WorkflowError("No deterministic checks configured. Use mw checks TASK --check '[\"command\",\"arg\"]'")
     if task["ui"] and not task["ui_checks"]:
         raise WorkflowError("UI gate required. Add an executable UI check with mw checks --ui-check")
+
+
+def check(task):
+    sync(task)
+    current = stage(task)
+    if current not in ("precheck", "verify"):
+        raise WorkflowError(f"Checks cannot release this task before review; current stage: {current}")
+    require_checks(task)
     before = fingerprint(task["repo"])
-    for index, argv in enumerate(task["checks"] + (task["ui_checks"] if task["ui"] else [])):
+    commands = task["checks"] + (task["ui_checks"] if task["ui"] and current == "verify" else [])
+    for index, argv in enumerate(commands):
         log = task_dir(task["id"]) / f"check-{len(task['history']):03d}-{index}.log"
         code = execute(task, argv, log)
-        task["history"].append({"event": "check", "argv": argv, "exit_code": code,
+        task["history"].append({"event": "check", "stage": current, "argv": argv, "exit_code": code,
                                 "fingerprint": before, "log": str(log)})
         save(task)
         print(f"Check exit {code}: {shlex.join(argv)}; log: {log}")
@@ -483,8 +505,13 @@ def check(task):
             task["blocked"] = True
             save(task)
             raise WorkflowError("Verification failed; inspect output and use mw repair")
-    task["ready"] = True
     task["blocked"] = False
+    if current == "precheck":
+        task["index"] += 1
+        save(task)
+        print("Prechecks passed; proceed to independent review. Final verification is still required.")
+        return
+    task["ready"] = True
     task["index"] = len(task["stages"])
     save(task)
     print("Verified current checkout; ready for human review/commit.")
@@ -506,6 +533,36 @@ def status(task):
     print(f"Current stage: {stage(task)}; blocked: {task.get('blocked', False)}")
     print(f"Artifacts: {task_dir(task['id'])}")
     print("USD is configured estimated usage, not measured billing; actual cost is unknown.")
+
+
+def report_cost(task, usd, reference, provider):
+    if not math.isfinite(usd) or usd < 0:
+        raise WorkflowError("USD must be a finite nonnegative number")
+    if not reference.strip() or not provider.strip():
+        raise WorkflowError("Cost entry needs a provider and unique usage/invoice reference")
+    entries = task.setdefault("reported_costs", [])
+    if any(x["reference"] == reference and x["provider"] == provider for x in entries):
+        raise WorkflowError("That provider/reference has already been recorded")
+    entries.append({"usd": usd, "reference": reference, "provider": provider,
+                    "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat()})
+    save(task)
+    print("Recorded user-reported cost; the runner has not independently verified the billing.")
+
+
+def metrics(task):
+    sync(task)
+    launches = [x for x in task["history"] if x["event"] == "execution"]
+    entries = task.get("reported_costs", [])
+    print(json.dumps({"task": task["id"], "risk": task["risk"], "ready": task["ready"],
+                      "stage_attempts": task["attempts"], "cli_launches": len(launches),
+                      "review_launches": sum(x["stage"] == "review" for x in launches),
+                      "repairs": task["repairs"], "active_seconds": task["active_seconds"],
+                      "estimated_usd": task["estimated_usd"],
+                      "user_reported_usd": sum(x["usd"] for x in entries) if entries else None,
+                      "reported_cost_entries": len(entries),
+                      "billing_verified": False,
+                      "failed_prechecks": sum(x["event"] == "check" and x.get("stage") == "precheck"
+                                              and x["exit_code"] != 0 for x in task["history"])}, indent=2))
 
 
 def doctor():
@@ -532,7 +589,7 @@ def parser():
     start.add_argument("--ui", action="store_true")
     start.add_argument("--check", action="append", default=[])
     start.add_argument("--ui-check", action="append", default=[])
-    for name in ("status", "next", "run", "resume", "record", "check", "checks", "repair"):
+    for name in ("status", "next", "run", "resume", "record", "check", "checks", "repair", "metrics", "cost"):
         command = sub.add_parser(name)
         command.add_argument("task")
         if name in ("next", "run", "resume"):
@@ -546,6 +603,10 @@ def parser():
         if name == "checks":
             command.add_argument("--check", action="append", default=[])
             command.add_argument("--ui-check", action="append", default=[])
+        if name == "cost":
+            command.add_argument("--usd", type=float, required=True)
+            command.add_argument("--provider", required=True)
+            command.add_argument("--reference", required=True)
     sub.add_parser("doctor")
     sub.add_parser("config", help="Print effective config; task config is snapshotted at start")
     sub.add_parser("list", help="List task IDs and checkout paths")
@@ -572,6 +633,10 @@ def main(argv=None):
                 task = load(args.task)
                 if args.action == "status":
                     status(task)
+                elif args.action == "metrics":
+                    metrics(task)
+                elif args.action == "cost":
+                    report_cost(task, args.usd, args.reference, args.provider)
                 elif args.action == "next":
                     if task.get("blocked"):
                         raise WorkflowError("Previous stage failed; inspect findings and use mw repair")

@@ -98,7 +98,7 @@ class WorkflowTests(unittest.TestCase):
         self.cli("run", task)
         data = self.data(task)
         self.assertTrue(data["ready"])
-        self.assertEqual(data["stages"], ["implement", "review", "verify"])
+        self.assertEqual(data["stages"], ["implement", "precheck", "review", "verify"])
         self.assertEqual(data["attempts"], 2)
         self.assertEqual(self.git("rev-parse", "HEAD").stdout, head)
         self.assertTrue(any(x["event"] == "check" and x["exit_code"] == 0 for x in data["history"]))
@@ -115,8 +115,9 @@ class WorkflowTests(unittest.TestCase):
         p = self.cli("run", task, ok=False)
         self.assertIn("UI gate required", p.stderr)
         self.assertFalse(self.data(task)["ready"])
+        self.assertEqual(self.data(task)["attempts"], 0)
         self.cli("checks", task, "--ui-check", self.check)
-        self.cli("check", task)
+        self.cli("run", task)
         self.assertTrue(self.data(task)["ready"])
 
     def test_checkout_edits_invalidate_ready_and_untracked_files(self):
@@ -143,7 +144,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(self.data(task)["ready"])
 
     def test_readonly_reviewer_changes_rejected(self):
-        task = self.start("--flow", "review-update")
+        task = self.start("--flow", "review-update", "--ui-check", json.dumps([sys.executable, "-c", "pass"]))
+        self.cli("checks", task, "--check", json.dumps([sys.executable, "-c", "pass"]))
         self.env["EDIT_STAGE"] = "review"
         p = self.cli("run", task, ok=False)
         self.assertIn("Read-only stage", p.stderr)
@@ -252,6 +254,73 @@ class WorkflowTests(unittest.TestCase):
         task = self.start("--risk", "low")
         self.cli("run", task, "--once", "--tool", "dsh")
         self.assertEqual(self.data(task)["index"], 1)
+
+    def test_medium_routine_task_uses_two_agent_stages(self):
+        task = self.start("--risk", "medium")
+        self.cli("run", task)
+        data = self.data(task)
+        self.assertNotIn("test", data["stages"])
+        self.assertEqual(data["attempts"], 2)
+        self.assertTrue(data["ready"])
+
+    def test_separate_test_stage_remains_configurable(self):
+        self.override({"routing": {"separate_test_risks": ["medium", "high"]}})
+        task = self.start("--risk", "medium")
+        self.cli("run", task)
+        self.assertEqual(self.data(task)["attempts"], 3)
+        self.assertTrue(self.data(task)["ready"])
+
+    def test_previously_saved_tasks_keep_their_original_stages(self):
+        task = self.start("--risk", "low")
+        data = self.data(task)
+        data["stages"].remove("precheck")
+        data["config"].pop("routing")
+        (self.folder(task) / "task.json").write_text(json.dumps(data))
+        self.cli("run", task)
+        self.assertTrue(self.data(task)["ready"])
+        self.assertNotIn("precheck", self.data(task)["stages"])
+
+    def test_failed_precheck_avoids_review_launch(self):
+        task = self.start("--risk", "medium", "--check", json.dumps([sys.executable, "-c", "raise SystemExit(2)"]))
+        self.cli("run", task, ok=False)
+        data = self.data(task)
+        self.assertEqual(data["attempts"], 1)
+        self.assertFalse(any(x.get("stage") == "review" for x in data["history"]))
+        self.assertFalse(data["ready"])
+
+    def test_precheck_does_not_replace_final_verification(self):
+        task = self.start("--risk", "low")
+        self.cli("run", task, "--once")
+        self.cli("check", task)
+        self.assertFalse(self.data(task)["ready"])
+        self.cli("run", task)
+        checks = [x for x in self.data(task)["history"] if x["event"] == "check"]
+        self.assertEqual([x["stage"] for x in checks], ["precheck", "verify"])
+
+    def test_second_repair_escalates_implementation(self):
+        task = self.start("--risk", "medium")
+        self.env["FAIL_STAGE"] = "implement"
+        for number in range(2):
+            self.cli("run", task, ok=False)
+            self.cli("repair", task, "--reason", f"Diagnosed attempt {number + 1}")
+        self.env.pop("FAIL_STAGE")
+        self.cli("run", task)
+        models = [x["role"]["model"] for x in self.data(task)["history"]
+                  if x["event"] == "execution" and x["stage"] == "implement"]
+        self.assertEqual(models, ["deepseek-flash", "deepseek-flash", "deepseek-v4-pro"])
+
+    def test_metrics_distinguish_estimates_from_reported_billing(self):
+        task = self.start("--risk", "medium")
+        self.assertIsNone(json.loads(self.cli("metrics", task).stdout)["user_reported_usd"])
+        self.cli("cost", task, "--usd", "0.12", "--provider", "deepseek", "--reference", "usage-1")
+        self.cli("cost", task, "--usd", "0.12", "--provider", "deepseek", "--reference", "usage-1", ok=False)
+        self.cli("cost", task, "--usd", "nan", "--provider", "deepseek", "--reference", "invalid", ok=False)
+        self.cli("run", task)
+        metrics = json.loads(self.cli("metrics", task).stdout)
+        self.assertEqual(metrics["user_reported_usd"], 0.12)
+        self.assertEqual(metrics["cli_launches"], 2)
+        self.assertEqual(metrics["review_launches"], 1)
+        self.assertFalse(metrics["billing_verified"])
 
     def test_invalid_configuration_is_reported_cleanly(self):
         self.override({"roles": []})

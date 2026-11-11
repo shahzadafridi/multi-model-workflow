@@ -12,10 +12,12 @@ flowchart TD
     B -->|High risk or full spec| C[Plan · Codex]
     B -->|Low or medium risk| D[Implement · DeepSeek]
     C --> D
-    D --> E{Medium/high risk or UI?}
+    D --> E{High risk or UI?}
     E -->|Yes| F[Tests and targeted refactoring · Cursor]
-    E -->|No| G[Review · Cursor or Codex for high risk]
-    F --> G
+    E -->|No| P[Run executable prechecks]
+    F --> P
+    P -->|Passed| G[Review · Cursor or Codex for high risk]
+    P -->|Failed| I
     G -->|Approved| H[Run configured checks + required UI tests]
     G -->|Changes requested| I[Stop · diagnose · bounded repair]
     H -->|Failed| I
@@ -27,7 +29,8 @@ flowchart TD
     S -.-> H
 ```
 
-Small tasks skip separate planning and test-authoring stages. Models and tools
+Routine non-UI tasks use two agent stages: implementation and review.
+Prechecks catch broken implementations before spending on review. Models and tools
 are configurable. Source changes invalidate old approval; missing or failing
 required checks block completion. The runner never commits or pushes automatically.
 Failed planning must complete before implementation; repairs cannot skip it.
@@ -92,6 +95,7 @@ mw repair TASK_ID --reason "Explain the diagnosed issue and next fix"
 
 Defaults: [config/default.json](config/default.json). Optional overrides:
 `~/.config/workflow/config.json`. Run `mw config` to inspect effective settings.
+A second diagnosed repair uses the configured stronger implementation role.
 Default limits are 12 stage attempts, 2 repairs, and 60 minutes of active process
 time. Estimated spend caps are optional; they do not measure provider billing.
 
@@ -103,5 +107,8 @@ time. Estimated spend caps are optional; they do not measure provider billing.
 State and logs stay outside product checkouts in `~/.local/state/workflow`.
 Project-specific `code-convention` / `code-review` skills are optional and are not
 bundled. Authenticate model providers separately; paid access is not guaranteed.
+
+Compare task attempts, repairs, time and user-reported billing with `mw metrics TASK_ID`.
+Savings must be measured against comparable verified fixes; no percentage is promised.
 
 Offline regression tests: `python3 -m unittest discover -s tests -v`.

@@ -58,35 +58,41 @@ implementation role. `myworkflow` is a menu; `myworkflow help` shows this guide.
 
 | Task | Stages |
 |---|---|
-| Adaptive low risk | implement → review → verify |
-| Adaptive medium risk | implement → test/refactor → review → verify |
-| Adaptive high risk | plan → implement → test/refactor → review → verify |
-| ship-from-spec | plan → implement → test → review → verify, UI required |
-| ship-change | implement → test → review → verify, UI required |
+| Adaptive low risk | implement → precheck → review → verify |
+| Adaptive medium non-UI | implement → precheck → review → verify |
+| Adaptive high risk | plan → implement → test/refactor → precheck → review → verify |
+| ship-from-spec | plan → implement → test → precheck → review → verify, UI required |
+| ship-change | implement → test → precheck → review → verify, UI required |
 | commit-change | adaptive stages, no UI requirement unless --ui supplied |
-| review-update | review → verify, UI required |
+| review-update | precheck → review → verify, UI required |
 
-High risk adds a plan even for legacy flows; review-update reviews already written
-work. Choose high risk for permissions, payments, migrations, public contracts,
+High risk adds a plan even for legacy flows; review-update checks and reviews already written
+work. UI tasks retain separate test authoring. Configure routing.separate_test_risks
+to add that stage to other risk levels. Choose high risk for permissions, payments, migrations, public contracts,
 and major architectural uncertainty. Adaptive tasks require --ui for UI changes.
 Risk classification is a caller/agent responsibility, not an infallible classifier.
 
 Defaults: Codex planning, DeepSeek implementation, Cursor Auto test/refactor and
-routine review, Codex high-risk review. Low-risk tasks avoid a separate planning
-and test-authoring stage but still require review and executable checks.
+routine review, Codex high-risk review. Routine non-UI tasks avoid separate planning and test-authoring calls, but still
+require independent review and executable checks. The implementer authors needed
+regression tests. High-risk work retains stronger planning and test authoring.
 
-Configure checks per task, with argument arrays (no shell evaluation):
+Configure checks before launching paid stages, with argument arrays (no shell
+evaluation). Missing regular or required UI checks block mw run before spending:
 
 ```bash
 mw checks TASK_ID --check '["./gradlew", "test"]' \
   --ui-check '["maestro", "test", "/absolute/path/to/related-flows"]'
+# At precheck or final verification:
 mw check TASK_ID
 ```
 
 --check replaces that task's regular checks; --ui-check replaces UI checks.
 UI-required flows stop until UI commands are provided and succeed. Agents should
 select meaningful coverage; a successful no-op command is not useful evidence.
-Only runner-executed commands release the final gate. Tests that alter tracked or
+Only runner-executed commands release the final gate. Regular checks run before
+review to catch obvious failures cheaply, and run again after review for fresh
+release evidence. Precheck never grants readiness; UI checks run at final verify. Tests that alter tracked or
 nonignored files invalidate review; configure generated outputs as Git-ignored.
 
 Review/test evidence is bound to HEAD, index and checkout contents, including
@@ -125,8 +131,10 @@ mw repair TASK_ID --reason "The null timestamp case fails; fix the parser"
 mw run TASK_ID --once
 ```
 
-Repair returns to implementation (review for existing-code review-update) and
-invalidates prior approval. Default limits: 12 stage attempts, 2 repairs, 60 minutes
+Repair returns to implementation (precheck for existing-code review-update) and
+invalidates prior approval. A second diagnosed repair uses implement_high;
+routing.escalate_after_repairs configures this threshold. Existing saved tasks
+retain their captured routing and stages. Default limits: 12 stage attempts, 2 repairs, 60 minutes
 of runner-controlled subprocess execution, 15 minutes per process. Manual chat
 time is not measured. Checks consume the same active execution budget. Budgets
 are snapshotted at task creation; restarting a UI does not reset them.
@@ -182,7 +190,20 @@ Task JSON, prompts, structured results and logs are stored in
 ~/.local/state/workflow/tasks/TASK_ID (respects XDG_STATE_HOME). The config snapshot
 and history support comparisons of total attempts, repairs, execution time and
 acceptance. Actual billing, human effort and escaped defects require external
-measurement; no savings claim is built in.
+measurement; no savings claim is built in. To attach non-overlapping usage amounts
+from provider dashboards to a task:
+
+```bash
+mw cost TASK_ID --provider deepseek --reference usage-record-123 --usd 0.12
+mw metrics TASK_ID
+```
+
+Amounts are user-reported, not independently verified billing. Duplicate
+provider/reference pairs are rejected. Include every relevant provider for a
+complete total; fixed subscription allocation and human time remain separate.
+Metrics report CLI stage launches (not internal model/tool calls), repairs,
+failed prechecks, active execution time, configured estimates and reported USD.
+Compare these on equivalent tasks with the same acceptance criteria and checks.
 
 ## Installation locations and compatibility
 

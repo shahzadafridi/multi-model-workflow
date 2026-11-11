@@ -19,6 +19,6 @@ For a plain task brief or `start BRIEF`, classify risk and UI impact, create an
 adaptive task via `mw start --risk LEVEL --brief BRIEF` (add --ui for UI changes),
 and run configured stages with `mw run TASK --once` while gates succeed.
 Use proper argument quoting. Show the task ID and routing. Define executable
-checks before final verification. Read QUICKSTART for manual handoff if CLI
+checks before the first paid stage. Read QUICKSTART for manual handoff if CLI
 launching is unavailable. Do not silently replace an independent reviewer.
 Commit/push only when explicitly requested after gates pass.

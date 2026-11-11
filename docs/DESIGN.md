@@ -21,7 +21,7 @@ are advisory evidence; executable checks record actual process status separately
 Ignored/external files and live services are deliberately outside the fingerprint.
 
 Routing is impact-aware but caller-selected: high risk reserves stronger roles;
-small tasks skip premium planning and separate test authoring. Default model
+routine non-UI tasks skip premium planning and separate test authoring. Default model
 identifiers preserve existing DeepSeek configuration; Codex inherits its configured
 model. Cursor Auto does not imply a fixed underlying model, price or independence.
 Replace role mappings after measuring outcomes in your actual accounts.
@@ -70,3 +70,22 @@ Keep the same acceptance criteria/checks for fair comparisons. Repeat across
 several tasks; revise routing based on observed quality and total cost rather
 than a single model leaderboard or nominal token price. Historical artifacts
 support this experiment; no automatic savings estimate is asserted.
+
+## Cost-focused routing update
+
+New non-UI medium-risk tasks use implement → precheck → review → verify. The
+implementer owns regression tests; a separate test-authoring agent remains for
+high-risk and UI tasks. Regular checks run before paid review. Required check
+configuration is validated before any CLI launch, avoiding spend on tasks that
+cannot pass their release gate. Final verification runs fresh after review;
+prechecks never substitute for approval or final checks.
+
+After two diagnosed repairs, implementation selects the configured stronger role
+without downgrading risk or UI requirements. Limits still stop further loops.
+Existing tasks keep their captured configuration/stages.
+
+Cost entries accept non-overlapping, user-reported dashboard amounts with a unique
+provider/reference. Metrics expose stage launches, repairs, execution time, failed
+prechecks, estimates and reported USD without pretending to retrieve billing.
+The reduction from three to two routine agent stages is structural; actual dollar
+savings and defect rates must be established on comparable verified fixes.

@@ -5,17 +5,17 @@ description: Run the user's portable multi-model feature pipeline with saved han
 
 The canonical runner is `~/workflow/bin/mw`. Use one task ID across interfaces.
 Commands: start, next, run, resume, record, check, checks, repair, status, list,
-doctor. Read `~/workflow/docs/QUICKSTART.md` for usage.
+doctor, metrics, cost. Read `~/workflow/docs/QUICKSTART.md` for usage.
 
 ## Routing
 
-- Low risk: implement → review → verify.
-- Medium: implement → test/refactor → review → verify.
-- High: plan → implement → test/refactor → review → verify.
+- Low risk: implement → precheck → review → verify.
+- Medium non-UI: implement → precheck → review → verify.
+- High: plan → implement → test/refactor → precheck → review → verify.
 - ship-from-spec always includes plan and UI verification.
 - ship-change always includes UI verification.
 - commit-change omits UI verification, retains review and executable checks.
-- review-update starts at review and requires UI verification.
+- review-update starts at precheck and requires UI verification.
 
 Use high risk for authentication/authorization, payments, migrations, public
 contracts, or substantial architectural uncertainty. For adaptive auto tasks,
@@ -23,7 +23,8 @@ add --ui when UI behavior is affected. Low risk does not waive a required UI gat
 
 Defaults: Codex plan, DeepSeek implementation, Cursor test and review, Codex
 high-risk review. Tool and model are separate configuration. Switching tools
-does not guarantee independent review. Configuration is snapshotted at start.
+does not guarantee independent review. Configuration is snapshotted at start. UI changes retain a test-authoring stage.
+A second diagnosed repair escalates to implement_high; the two-repair cap remains.
 
 ## Stage contracts
 
@@ -32,13 +33,15 @@ does not guarantee independent review. Configuration is snapshotted at start.
    for Kotlin/Compose projects; quick checks; no commit.
 3. Test: meaningful tests, relevant Maestro scenarios, targeted refactoring;
    next review includes all resulting source/test edits.
-4. Review: requirements, conventions, code-review Mode B, correctness; read-only;
+4. Precheck: execute regular checks before spending on review; failures stop.
+5. Review: requirements, conventions, code-review Mode B, correctness; read-only;
    APPROVE or REQUEST_CHANGES.
-5. Verify: runner executes configured command arrays and records exit status,
+6. Verify: runner executes configured command arrays and records exit status,
    logs and checkout fingerprint. Required UI work needs executable UI checks.
    Missing devices/checks stop release.
 
-Use `mw run TASK --once` for configured cross-tool execution. Manual work in the
+Configure meaningful regular checks and required UI checks before launching paid
+stages; the runner blocks missing checks upfront. Use `mw run TASK --once` for configured cross-tool execution. Manual work in the
 current UI: `mw next TASK --tool manual`, perform one stage, write its JSON result,
 then `mw record TASK --result PATH`. Disclose manual substitutions. Preserve
 independent high-risk review. Never recursively launch from a stage prompt.
