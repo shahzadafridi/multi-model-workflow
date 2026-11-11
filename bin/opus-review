@@ -1,0 +1,3 @@
+#!/bin/zsh
+# Cursor Agent — Opus 5.5 review (requirements + convention + code-review)
+exec agent --model claude-opus-5-5-high "$@"

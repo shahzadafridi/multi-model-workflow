@@ -1,0 +1,67 @@
+#!/bin/zsh
+# Show Bitbucket CLI (bkt) + Orca credential status (no secrets printed).
+set -euo pipefail
+
+bold=$'\e[1m'; green=$'\e[32m'; yellow=$'\e[33m'; dim=$'\e[2m'; reset=$'\e[0m'
+
+print "${bold}Bitbucket status${reset}"
+print "${dim}Orca app auth and bkt CLI auth are separate. Agents in Orca use bkt for PR comments.${reset}"
+print ""
+
+if command -v bkt >/dev/null 2>&1; then
+  print "${green}✓${reset} CLI: $(command -v bkt)  ($(bkt --version 2>/dev/null | head -1))"
+else
+  print "${yellow}✗${reset} CLI: bkt not found — brew install bitbucket-cli"
+fi
+
+print ""
+print "${bold}bkt auth${reset}"
+if command -v bkt >/dev/null 2>&1; then
+  if bkt auth status 2>&1 | grep -qi 'No hosts configured'; then
+    print "${yellow}Not logged in.${reset} Run:"
+    print "  ${green}bkt auth login https://bitbucket.org --kind cloud --web${reset}"
+    print "  (preferred OAuth; or --web-token for an Atlassian API token)"
+  else
+    bkt auth status 2>&1 || true
+  fi
+fi
+
+print ""
+print "${bold}bkt context${reset}"
+if command -v bkt >/dev/null 2>&1; then
+  if bkt context list 2>&1 | grep -q .; then
+    bkt context list 2>&1 || true
+  else
+    print "${yellow}No context.${reset} Example:"
+    print "  ${green}bkt context create work --host \"https://api.bitbucket.org/2.0\" \\${reset}"
+    print "  ${green}  --workspace your-workspace --repo your-repository --set-active${reset}"
+  fi
+fi
+
+print ""
+print "${bold}Orca Bitbucket credential${reset}"
+orcaj="${HOME}/.orca/bitbucket-credential.json"
+if [[ -f "$orcaj" ]]; then
+  python3 - <<'PY'
+import json
+from pathlib import Path
+d=json.loads((Path.home()/".orca"/"bitbucket-credential.json").read_text())
+print(f"  account: {d.get('account')}")
+print(f"  email:   {(d.get('email') or '')[:3]}…")
+print(f"  authMode:{d.get('authMode')}")
+print(f"  updated: {d.get('updatedAt')}")
+print("  (token stored in ~/.orca/bitbucket-credential.enc — Orca app only)")
+PY
+  print "${dim}Orca auth ≠ bkt. Keep both logged in: Orca for the app, bkt for terminal/agent comments.${reset}"
+else
+  print "${yellow}No Orca Bitbucket credential file found.${reset}"
+  print "  Sign in to Bitbucket inside the Orca app settings."
+fi
+
+print ""
+print "${bold}Repo remote (cwd)${reset}"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git remote -v | head -4
+else
+  print "  (not in a git repo)"
+fi

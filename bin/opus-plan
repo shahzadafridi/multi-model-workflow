@@ -1,0 +1,3 @@
+#!/bin/zsh
+# Cursor Agent — Opus 5.5 plan mode (requirements, no edits)
+exec agent --model claude-opus-5-5-high --mode plan "$@"

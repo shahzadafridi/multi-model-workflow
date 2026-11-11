@@ -1,0 +1,61 @@
+#!/bin/zsh
+# Review a PR or current branch:
+#   code-convention + code-review + overall bad-practice / issue pass
+# Usage:
+#   review-pr              # current branch vs default base
+#   review-pr 123          # GitHub PR number
+#   review-pr owner/repo#123
+#   review-pr --pro        # use DeepSeek Pro instead of Cursor Opus (fallback)
+set -euo pipefail
+source "${0:A:h}/fp-common.zsh"
+
+USE_PRO=0
+TARGET=()
+for a in "$@"; do
+  if [[ "$a" == "--pro" ]]; then
+    USE_PRO=1
+  else
+    TARGET+=("$a")
+  fi
+done
+TARGET_STR="${(j: :)TARGET}"
+
+fp_banner "review-pr" "code-convention + code-review + overall quality / bad practices"
+
+if command -v bb-status >/dev/null 2>&1; then
+  print "Bitbucket CLI quick check:"
+  if command -v bkt >/dev/null 2>&1 && ! bkt auth status 2>&1 | grep -qi 'No hosts configured'; then
+    print "  bkt: logged in"
+  else
+    print "  bkt: NOT logged in — run: bkt auth login https://bitbucket.org --kind cloud --web"
+    print "  (Comments stay local until CLI auth + author YES via review-pr-comment)"
+  fi
+  print ""
+fi
+
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  print "Repo: $(git rev-parse --show-toplevel)"
+  print "Branch: $(git branch --show-current 2>/dev/null || echo '?')"
+  if [[ -n "$TARGET_STR" ]] && command -v bkt >/dev/null 2>&1; then
+    print "Trying: bkt pr view ${TARGET_STR} …"
+    bkt pr view "$TARGET_STR" 2>/dev/null | head -40 || true
+  fi
+  print ""
+fi
+
+fp_pr_review_prompt "$TARGET_STR"
+print ""
+print "After the review: write a findings draft, get AUTHOR approval, then:"
+print "  review-pr-comment <pr-id> .workflow/pr-<id>-findings.md"
+print "  (pending drafts by default — see ~/workflow/docs/BITBUCKET.md)"
+print ""
+
+if (( USE_PRO )); then
+  fp_pause "Opening DeepSeek Pro for PR review (Cursor fallback)"
+  claude-ds-pro
+else
+  fp_pause "Opening Cursor Opus for PR review"
+  opus-review
+fi
+
+fp_banner "review-pr" "Done — author must approve before Bitbucket comments."

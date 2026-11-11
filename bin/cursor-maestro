@@ -1,0 +1,3 @@
+#!/bin/zsh
+# Cursor Agent — Auto model for Maestro authoring/running
+exec agent --model auto "$@"

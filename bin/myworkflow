@@ -1,0 +1,26 @@
+#!/bin/zsh
+set -euo pipefail
+WORKFLOW_HOME="${0:A:h:h}"
+if [[ "${1:-}" == (help|--help|-h) ]]; then
+  cat "${WORKFLOW_HOME}/docs/QUICKSTART.md"
+elif [[ "${1:-}" == (setup|guide) ]]; then
+  cat "${WORKFLOW_HOME}/docs/SETUP_ANY_COMPUTER.md"
+elif [[ $# -gt 0 && "$1" != menu ]]; then
+  exec "${WORKFLOW_HOME}/bin/mw" "$@"
+else
+  print 'My workflow — shared across coding agents'
+  print '1) Start a task   2) List/resume tasks   3) Doctor   h) Help   q) Quit'
+  read -r 'choice?Select: '
+  case "$choice" in
+    1)
+      read -r 'brief?Task: '
+      read -r 'risk?Risk [low/medium/high, default medium]: '
+      exec "${WORKFLOW_HOME}/bin/mw" start --brief "$brief" --risk "${risk:-medium}"
+      ;;
+    2) exec "${WORKFLOW_HOME}/bin/mw" list ;;
+    3) exec "${WORKFLOW_HOME}/bin/mw" doctor ;;
+    h) cat "${WORKFLOW_HOME}/docs/QUICKSTART.md" ;;
+    q|'') exit 0 ;;
+    *) print 'Unknown choice'; exit 1 ;;
+  esac
+fi

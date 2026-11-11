@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "roles": {
+    "plan": {"tool": "codex", "model": ""},
+    "implement": {"tool": "deepseek", "model": "deepseek-flash"},
+    "implement_high": {"tool": "deepseek", "model": "deepseek-v4-pro"},
+    "test": {"tool": "cursor", "model": "auto"},
+    "review": {"tool": "cursor", "model": "auto"},
+    "review_high": {"tool": "codex", "model": ""}
+  },
+  "limits": {
+    "max_attempts": 12,
+    "max_repairs": 2,
+    "max_active_seconds": 3600,
+    "process_timeout_seconds": 900,
+    "max_estimated_usd": null
+  },
+  "checks": [],
+  "ui_checks": []
+}
